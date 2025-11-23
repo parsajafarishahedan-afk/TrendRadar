@@ -1,0 +1,275 @@
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.parse
+import json
+import os
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
+# ------------------------
+# فایل‌های دیتابیس
+# ------------------------
+DATA_CLINIC = "clinics.json"
+DATA_DOCTOR = "doctors.json"
+DATA_LAB = "labs.json"
+DATA_TEST = "tests.json"
+
+for f in [DATA_CLINIC, DATA_DOCTOR, DATA_LAB, DATA_TEST]:
+    if not os.path.exists(f):
+        with open(f, "w", encoding="utf-8") as file:
+            json.dump([], file, ensure_ascii=False, indent=2)
+
+def load(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ------------------------
+# PDF نتیجه آزمایش
+# ------------------------
+def make_test_pdf(info):
+    filename = "test_result.pdf"
+    c = canvas.Canvas(filename, pagesize=A4)
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(100, 800, "Lab Test Report")
+    c.setFont("Helvetica", 13)
+    y = 750
+    for k, v in info.items():
+        c.drawString(70, y, f"{k}: {v}")
+        y -= 30
+    c.save()
+    return filename
+
+# ------------------------
+# HTML + CSS
+# ------------------------
+def style():
+    return """
+    <style>
+    body { background:#050505; color:#fff; margin:0; direction:rtl; font-family:Tahoma; }
+    .sidebar { width:230px; height:100vh; background:#0c0c0c; padding:20px;
+               border-left:1px solid rgba(255,255,255,0.1); position:fixed; right:0; top:0;
+               backdrop-filter: blur(8px); box-shadow:0 0 20px rgba(0,0,0,0.5); }
+    .sidebar h3 { color:#ffcc00; margin-bottom:20px; text-shadow:0 0 5px #ffcc00; }
+    .side-btn { display:block; padding:14px; margin-bottom:12px; border-radius:12px;
+                color:#fff; text-decoration:none; font-weight:bold; text-align:center;
+                background:linear-gradient(135deg,#ff0048,#ff6600);
+                box-shadow:0 3px 10px rgba(255,50,50,0.4); transition:0.2s; }
+    .side-btn:hover { transform:scale(1.05); box-shadow:0 6px 14px rgba(255,90,0,0.6); }
+    .btn { padding:12px 20px; border-radius:12px; border:none;
+           background:linear-gradient(135deg,#0066ff,#00e0ff);
+           color:white; font-weight:bold; cursor:pointer; transition:0.2s; }
+    .btn:hover { transform:scale(1.05); box-shadow:0 6px 14px rgba(0,150,255,0.5); }
+    input[type=text] { width:300px; padding:10px; background:#1c1c1c; border:1px solid #555;
+                        color:#fff; border-radius:10px; margin-bottom:10px; }
+    .main { margin-right:260px; padding:30px; }
+    table { width:600px; border-collapse:collapse; margin-top:20px; color:#fff; }
+    th,td { border:1px solid #444; padding:8px; text-align:center; }
+    th { background:#222; }
+    </style>
+    """
+
+def header(title):
+    return f"""
+    <html><head><meta charset="utf-8"><title>{title}</title>{style()}</head>
+    <body>
+    <div class="sidebar">
+        <h3>منوی اصلی</h3>
+        <a class="side-btn" href="/">داشبورد</a>
+        <a class="side-btn" href="/register">ثبت درمانگاه</a>
+        <a class="side-btn" href="/doctor">ثبت پزشک</a>
+        <a class="side-btn" href="/lab">ثبت آزمایشگاه</a>
+        <a class="side-btn" href="/lab-result">نتیجه آزمایش</a>
+        <a class="side-btn" href="/list">لیست درمانگاه‌ها</a>
+        <a class="side-btn" href="/doctor-list">لیست پزشکان</a>
+        <a class="side-btn" href="/lab-list">لیست آزمایشگاه</a>
+        <a class="side-btn" href="/test-list">نتایج آزمایش</a>
+    </div>
+    <div class="main">
+    """
+
+def footer():
+    return "</div></body></html>"
+
+# ------------------------
+# صفحات
+# ------------------------
+def page_home():
+    count_clinic = len(load(DATA_CLINIC))
+    count_doc = len(load(DATA_DOCTOR))
+    count_lab = len(load(DATA_LAB))
+    count_test = len(load(DATA_TEST))
+    return header("داشبورد") + f"""
+        <h2>داشبورد</h2>
+        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+            <div style="background:#111; padding:20px; border-radius:12px; width:200px; text-align:center; box-shadow:0 0 10px #ff6600;">
+                <h3>درمانگاه‌ها</h3>
+                <p style="font-size:24px; color:#ff6600;">{count_clinic}</p>
+            </div>
+            <div style="background:#111; padding:20px; border-radius:12px; width:200px; text-align:center; box-shadow:0 0 10px #00ccff;">
+                <h3>پزشکان</h3>
+                <p style="font-size:24px; color:#00ccff;">{count_doc}</p>
+            </div>
+            <div style="background:#111; padding:20px; border-radius:12px; width:200px; text-align:center; box-shadow:0 0 10px #66ff66;">
+                <h3>آزمایشگاه‌ها</h3>
+                <p style="font-size:24px; color:#66ff66;">{count_lab}</p>
+            </div>
+            <div style="background:#111; padding:20px; border-radius:12px; width:200px; text-align:center; box-shadow:0 0 10px #ff66ff;">
+                <h3>نتایج آزمایش</h3>
+                <p style="font-size:24px; color:#ff66ff;">{count_test}</p>
+            </div>
+        </div>
+    """ + footer()
+
+def page_register():
+    return header("ثبت درمانگاه") + """
+        <h2>ثبت درمانگاه</h2>
+        <form method="POST" action="/register">
+            <input type="text" name="clinic" placeholder="نام درمانگاه"><br>
+            <input type="text" name="x" placeholder="X"><br>
+            <input type="text" name="y" placeholder="Y"><br>
+            <button class="btn">ثبت</button>
+        </form>
+    """ + footer()
+
+def page_doctor():
+    return header("ثبت پزشک") + """
+        <h2>ثبت پزشک</h2>
+        <form method="POST" action="/doctor">
+            <input type="text" name="name" placeholder="نام پزشک"><br>
+            <input type="text" name="expert" placeholder="تخصص"><br>
+            <button class="btn">ثبت</button>
+        </form>
+    """ + footer()
+
+def page_lab():
+    return header("ثبت آزمایشگاه") + """
+        <h2>ثبت آزمایشگاه</h2>
+        <form method="POST" action="/lab">
+            <input type="text" name="name" placeholder="نام آزمایشگاه"><br>
+            <input type="text" name="service" placeholder="نوع خدمات"><br>
+            <button class="btn">ثبت</button>
+        </form>
+    """ + footer()
+
+def page_lab_result():
+    return header("ثبت نتیجه آزمایش") + """
+        <h2>ثبت نتیجه آزمایش</h2>
+        <form method="POST" action="/lab-result">
+            <input type="text" name="lab" placeholder="نام آزمایشگاه"><br>
+            <input type="text" name="patient" placeholder="نام بیمار"><br>
+            <input type="text" name="test_name" placeholder="نام آزمایش"><br>
+            <input type="text" name="result" placeholder="نتیجه"><br>
+            <input type="text" name="normal" placeholder="مقدار نرمال"><br>
+            <input type="text" name="comment" placeholder="توضیح پزشک"><br>
+            <button class="btn">ذخیره + ساخت PDF</button>
+        </form>
+    """ + footer()
+
+# ------------------------
+# جدول‌ها با حذف
+# ------------------------
+def page_list(path, title, fields):
+    data = load(path)
+    rows = ""
+    for i, d in enumerate(data):
+        rows += "<tr>" + "".join(f"<td>{d[f]}</td>" for f in fields)
+        rows += f'<td><a class="btn" href="/delete?path={path}&index={i}">حذف</a></td>'
+        rows += "</tr>"
+    table = f"<table><tr>{''.join(f'<th>{f}</th>' for f in fields)}<th>حذف</th></tr>{rows}</table>"
+    return header(title) + f"<h2>{title}</h2>" + table + footer()
+
+# ------------------------
+# سرور
+# ------------------------
+class Server(BaseHTTPRequestHandler):
+    def do_GET(self):
+        routes = {
+            "/": lambda: page_home(),
+            "/register": lambda: page_register(),
+            "/doctor": lambda: page_doctor(),
+            "/lab": lambda: page_lab(),
+            "/lab-result": lambda: page_lab_result(),
+            "/list": lambda: page_list(DATA_CLINIC, "لیست درمانگاه‌ها", ["clinic", "x", "y"]),
+            "/doctor-list": lambda: page_list(DATA_DOCTOR, "لیست پزشکان", ["name", "expert"]),
+            "/lab-list": lambda: page_list(DATA_LAB, "لیست آزمایشگاه‌ها", ["name", "service"]),
+            "/test-list": lambda: page_list(DATA_TEST, "نتایج آزمایش", ["lab","patient","test_name","result"]),
+        }
+
+        if self.path.startswith("/delete"):
+            query = urllib.parse.urlparse(self.path).query
+            params = urllib.parse.parse_qs(query)
+            path_file = params.get("path", [None])[0]
+            index = int(params.get("index", [0])[0])
+            if path_file and os.path.exists(path_file):
+                items = load(path_file)
+                if 0 <= index < len(items):
+                    items.pop(index)
+                    save(path_file, items)
+            self.redirect(self.headers.get("Referer", "/"))
+            return
+
+        if self.path == "/test.pdf":
+            if os.path.exists("test_result.pdf"):
+                self.send_response(200)
+                self.send_header("Content-type", "application/pdf")
+                self.end_headers()
+                with open("test_result.pdf", "rb") as f:
+                    self.wfile.write(f.read())
+                return
+
+        if self.path in routes:
+            page = routes[self.path]()
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(page.encode("utf-8"))
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        length = int(self.headers['Content-Length'])
+        data = urllib.parse.parse_qs(self.rfile.read(length).decode())
+        def v(x): return data[x][0]
+
+        if self.path == "/register":
+            items = load(DATA_CLINIC)
+            items.append({"clinic": v("clinic"), "x": v("x"), "y": v("y")})
+            save(DATA_CLINIC, items)
+
+        elif self.path == "/doctor":
+            items = load(DATA_DOCTOR)
+            items.append({"name": v("name"), "expert": v("expert")})
+            save(DATA_DOCTOR, items)
+
+        elif self.path == "/lab":
+            items = load(DATA_LAB)
+            items.append({"name": v("name"), "service": v("service")})
+            save(DATA_LAB, items)
+
+        elif self.path == "/lab-result":
+            info = {
+                "lab": v("lab"), "patient": v("patient"), "test_name": v("test_name"),
+                "result": v("result"), "normal": v("normal"), "comment": v("comment")
+            }
+            items = load(DATA_TEST)
+            items.append(info)
+            save(DATA_TEST, items)
+            make_test_pdf(info)
+            self.redirect("/test.pdf")
+            return
+
+        self.redirect("/")
+
+    def redirect(self, url):
+        self.send_response(302)
+        self.send_header("Location", url)
+        self.end_headers()
+
+# ------------------------
+# اجرا
+# ------------------------
+print("Server running at http://localhost:8080")
+HTTPServer(("localhost", 8080), Server).serve_forever()
